@@ -4,12 +4,16 @@ import { useOcularForensics, type OcularMetrics } from "../hooks/useOcularForens
 import { useKineticForensics, type KineticMetrics } from "../hooks/useKineticForensics";
 import { useCardiacForensics, type CardiacMetrics } from "../hooks/useCardiacForensics";
 import { useDeceptionDetection, type DeceptionMetrics } from "../hooks/useDeceptionDetection";
+import { useFaceEmbedding } from "../hooks/useFaceEmbedding";
 
 export interface CombinedMetrics {
   ocular: OcularMetrics;
   kinetic: KineticMetrics;
   cardiac: CardiacMetrics;
   deception: DeceptionMetrics;
+  // Privacy-preserving face embedding for registry matching. Refreshed every
+  // ~3 seconds. Null until the first embedding is computed.
+  faceEmbedding: Float32Array | null;
 }
 
 interface LiveCameraProps {
@@ -26,6 +30,7 @@ export default function LiveCamera({ onMetricsUpdate }: LiveCameraProps) {
   const kinetic = useKineticForensics();
   const cardiac = useCardiacForensics();
   const deception = useDeceptionDetection();
+  const faceEmbedding = useFaceEmbedding();
 
   const modelsReady = ocular.isReady && kinetic.isReady; // cardiac doesn't need a separate model
 
@@ -79,6 +84,9 @@ export default function LiveCamera({ onMetricsUpdate }: LiveCameraProps) {
           // Run deception analysis on all metrics
           deception.analyze(ocular.metrics, kinetic.metrics, cardiac.metrics);
 
+          // Compute face embedding for registry matching (throttled internally)
+          faceEmbedding.processFrame(video, ocular.lastLandmarksRef.current);
+
           lastTimestamp = now;
         }
       }
@@ -87,7 +95,7 @@ export default function LiveCamera({ onMetricsUpdate }: LiveCameraProps) {
 
     animationFrameRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(animationFrameRef.current);
-  }, [cameraStatus, modelsReady, ocular.processFrame, kinetic.processFrame, cardiac.processFrame, deception.analyze, ocular.metrics, kinetic.metrics, cardiac.metrics]);
+  }, [cameraStatus, modelsReady, ocular.processFrame, kinetic.processFrame, cardiac.processFrame, deception.analyze, faceEmbedding.processFrame, ocular.metrics, kinetic.metrics, cardiac.metrics]);
 
   // Sync canvases with video
   useEffect(() => {
@@ -111,10 +119,18 @@ export default function LiveCamera({ onMetricsUpdate }: LiveCameraProps) {
     return () => ro.disconnect();
   }, [ocular.canvasRef, kinetic.canvasRef, cardiac.canvasRef]);
 
-  // Bubble combined metrics
+  // Bubble combined metrics (including latest face embedding)
   useEffect(() => {
-    if (onMetricsUpdate) onMetricsUpdate({ ocular: ocular.metrics, kinetic: kinetic.metrics, cardiac: cardiac.metrics, deception: deception.metrics });
-  }, [ocular.metrics, kinetic.metrics, cardiac.metrics, deception.metrics, onMetricsUpdate]);
+    if (onMetricsUpdate) {
+      onMetricsUpdate({
+        ocular: ocular.metrics,
+        kinetic: kinetic.metrics,
+        cardiac: cardiac.metrics,
+        deception: deception.metrics,
+        faceEmbedding: faceEmbedding.lastEmbeddingRef.current,
+      });
+    }
+  }, [ocular.metrics, kinetic.metrics, cardiac.metrics, deception.metrics, onMetricsUpdate, faceEmbedding.lastEmbeddingRef]);
 
   return (
     <div className="w-full h-full relative bg-black">

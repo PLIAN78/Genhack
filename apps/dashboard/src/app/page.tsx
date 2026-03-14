@@ -3,10 +3,13 @@ import React, { useState, useCallback, useRef } from "react";
 import NodeGraph from "../components/NodeGraph";
 import LiveCamera from "../components/LiveCamera";
 import type { CombinedMetrics } from "../components/LiveCamera";
-import { AlertCircle, Activity, Camera, Users, Eye, Scan, Shield, Heart, Brain, Loader2 } from "lucide-react";
+import { AlertCircle, Activity, Camera, Users, Eye, Scan, Shield, Heart, Brain, Loader2, Database } from "lucide-react";
 import { Panel } from "../components/ui/Panel";
 import PhaseTracker from "../components/PhaseTracker";
 import { usePhaseAnalysis } from "../hooks/usePhaseAnalysis";
+import { useRegistrySync } from "../hooks/useRegistrySync";
+import { RegistryPanel } from "../components/RegistryPanel";
+import { REGISTRY_CONFIG } from "../lib/registryConfig";
 
 interface AlertItem {
   id: number;
@@ -23,6 +26,7 @@ function getTimeStr(): string {
 export default function Dashboard() {
   const [combined, setCombined] = useState<CombinedMetrics | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [registryOpen, setRegistryOpen] = useState(false);
   const { currentPhase, advancePhase, phaseAlerts, bufferStats } = usePhaseAnalysis(combined);
   const alertIdRef = useRef(0);
   const lastSweepAlertRef = useRef(0);
@@ -32,8 +36,14 @@ export default function Dashboard() {
   const lastHRAlertRef = useRef(0);
   const lastDeceptionAlertRef = useRef(0);
 
+  // Stable ref for the latest face embedding — updated in handleMetrics,
+  // passed to useRegistrySync to avoid re-renders on every embedding refresh.
+  const faceEmbeddingRef = useRef<Float32Array | null>(null);
+
   const handleMetrics = useCallback((m: CombinedMetrics) => {
     setCombined(m);
+    // Keep the embedding ref in sync without triggering a re-render.
+    if (m.faceEmbedding) faceEmbeddingRef.current = m.faceEmbedding;
     const now = Date.now();
     const generateId = () => now + Math.random();
     
@@ -107,6 +117,17 @@ export default function Dashboard() {
   const severity = riskScore >= 50 ? "High" : riskScore >= 25 ? "Medium" : "Low";
   const trafficColor = severity === "High" ? "red" : severity === "Medium" ? "yellow" : "green";
 
+  // Registry sync — observes scores and phase, writes to Supabase when
+  // thresholds are met. Additive-only: never mutates existing scoring state.
+  const { syncState } = useRegistrySync({
+    riskScore,
+    deceptionScore: d?.deceptionProbability ?? 0,
+    currentPhase,
+    faceEmbeddingRef,
+    featureVector: d?.featureVector ?? [],
+    faceDetected: o?.faceDetected ?? false,
+  });
+
   const riskFactors = (o && k) ? [
     o.isPeripheralSweep && `peripheral scanning (${o.gazeDeviationDeg.toFixed(0)}°)`,
     o.saccadicSweepRate > 8 && `rapid saccades (${o.saccadicSweepRate}/min)`,
@@ -148,6 +169,21 @@ export default function Dashboard() {
             <span className="px-4 py-1.5 bg-indigo-950/40 text-indigo-400 border border-indigo-900/50 shadow-[0_0_10px_rgba(99,102,241,0.2)] rounded-full text-xs font-mono flex items-center gap-2">
               <Activity size={12} className="animate-spin" /> Calibrating Posture: {k.calibrationProgress.toFixed(0)}%
             </span>
+          )}
+          {/* Registry toggle */}
+          {REGISTRY_CONFIG.enabled && (
+            <button
+              onClick={() => setRegistryOpen(true)}
+              className={`px-4 py-1.5 rounded-full text-xs font-mono font-medium flex items-center gap-2 border shadow-sm transition-all duration-200 ${
+                syncState.status === "new_person_flagged" || syncState.status === "known_person_updated"
+                  ? "bg-red-950/60 text-red-300 border-red-800/60 shadow-red-900/30 animate-pulse"
+                  : syncState.status === "encounter_active" || syncState.status === "matching"
+                  ? "bg-primary-950/50 text-primary-300 border-primary-800/50"
+                  : "bg-slate-800/60 text-slate-400 border-slate-700/50 hover:text-slate-200 hover:bg-slate-700/60"
+              }`}
+            >
+              <Database size={14} /> Registry
+            </button>
           )}
         </div>
       </header>
@@ -515,6 +551,13 @@ export default function Dashboard() {
           </Panel>
         </div>
       </div>
+
+      {/* High-risk person registry slide-over */}
+      <RegistryPanel
+        isOpen={registryOpen}
+        onClose={() => setRegistryOpen(false)}
+        syncState={syncState}
+      />
     </div>
   );
 }
