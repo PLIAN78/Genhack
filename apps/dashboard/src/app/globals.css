@@ -1,26 +1,52 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* FinUI Base Palette (Dark Theme Focus) */
+  --color-fin-bg: #0f172a;        /* slate-900 */
+  --color-fin-panel: #1e293b;     /* slate-800 */
+  --color-fin-border: #334155;    /* slate-700 */
+  
+  /* FinUI Primary (Violet/Indigo) */
+  --color-primary-50: #f5f3ff;
+  --color-primary-100: #ede9fe;
+  --color-primary-200: #ddd6fe;
+  --color-primary-300: #c4b5fd;
+  --color-primary-400: #a78bfa;
+  --color-primary-500: #8b5cf6;
+  --color-primary-600: #7c3aed;
+  --color-primary-700: #6d28d9;
+  --color-primary-800: #5b21b6;
+  --color-primary-900: #4c1d95;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  body {
+    @apply bg-fin-bg text-slate-200 font-sans antialiased;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  /* FinUI Panel / Glassmorphism */
+  .fin-panel {
+    @apply bg-fin-panel/90 backdrop-blur-md border border-fin-border rounded-xl shadow-lg;
+  }
+
+  /* FinUI Buttons */
+  .fin-button-primary {
+    @apply px-4 py-2 rounded-lg bg-primary-600 text-white font-medium
+           hover:bg-primary-500 active:bg-primary-700
+           shadow-[0_0_15px_rgba(124,58,237,0.3)] hover:shadow-[0_0_20px_rgba(124,58,237,0.5)]
+           transition-all duration-200 ease-out;
+  }
+
+  .fin-button-secondary {
+    @apply px-4 py-2 rounded-lg bg-slate-800 text-slate-300 font-medium
+           border border-slate-700 hover:bg-slate-700 hover:text-white
+           transition-all duration-200 ease-out;
+  }
+
+  /* Badge / Tags */
+  .fin-badge {
+    @apply px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide;
+  }
 }
