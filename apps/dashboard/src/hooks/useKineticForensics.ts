@@ -13,11 +13,20 @@ const LEFT_WRIST = 15;
 const RIGHT_WRIST = 16;
 const LEFT_HIP = 23;
 const RIGHT_HIP = 24;
+const LEFT_INDEX = 19;
+const RIGHT_INDEX = 20;
 
 // Calibration
 const CALIBRATION_FRAMES = 60; // ~2 seconds at 30fps
 const SHIELDING_THRESHOLD = 0.20; // 20% decrease = huddle
-const DITHERING_WINDOW = 30; // frames to track for tremor analysis (~1sec at 30fps)
+const DITHERING_WINDOW = 90; // 3 seconds at 30fps — long enough for 3-4 Hz tremor cycles
+
+// Tremor processing
+const TREMOR_FREQ_LOW = 3.0;   // Hz — lower bound of physiological tremor band
+const TREMOR_FREQ_HIGH = 15.0; // Hz — upper bound (Nyquist is 15 Hz at 30fps)
+const TREMOR_SMOOTHING = 0.12; // EMA factor for tremor output
+const TREMOR_THRESHOLD = 0.4;  // threshold for isTremoring
+const TREMOR_HYSTERESIS_FRAMES = 5; // must exceed threshold for N consecutive frames
 
 // ──────────────────────────────────────────────
 // Types
@@ -61,10 +70,110 @@ function dist2D(a: { x: number; y: number }, b: { x: number; y: number }): numbe
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
-function computeVariance(values: number[]): number {
-  if (values.length < 2) return 0;
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  return values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+/**
+ * 2nd-order Butterworth IIR Bandpass for tremor isolation.
+ * Cascade of high-pass (lowCut) then low-pass (highCut), applied forward+reverse (zero-phase).
+ */
+function butterBandpass(signal: number[], lowCut: number, highCut: number, fs: number): number[] {
+  if (signal.length < 6) return signal.slice();
+
+  function lpCoeffs(cutoff: number) {
+    const omega = 2 * Math.PI * cutoff / fs;
+    const cosW = Math.cos(omega);
+    const sinW = Math.sin(omega);
+    const alpha = sinW / (2 * Math.SQRT2);
+    const a0 = 1 + alpha;
+    return {
+      b0: ((1 - cosW) / 2) / a0, b1: (1 - cosW) / a0, b2: ((1 - cosW) / 2) / a0,
+      a1: (-2 * cosW) / a0, a2: (1 - alpha) / a0,
+    };
+  }
+  function hpCoeffs(cutoff: number) {
+    const omega = 2 * Math.PI * cutoff / fs;
+    const cosW = Math.cos(omega);
+    const sinW = Math.sin(omega);
+    const alpha = sinW / (2 * Math.SQRT2);
+    const a0 = 1 + alpha;
+    return {
+      b0: ((1 + cosW) / 2) / a0, b1: (-(1 + cosW)) / a0, b2: ((1 + cosW) / 2) / a0,
+      a1: (-2 * cosW) / a0, a2: (1 - alpha) / a0,
+    };
+  }
+  function applyBiquad(x: number[], c: { b0: number; b1: number; b2: number; a1: number; a2: number }): number[] {
+    const y = new Array(x.length);
+    let z1 = 0, z2 = 0;
+    for (let i = 0; i < x.length; i++) {
+      const yi = c.b0 * x[i] + z1;
+      z1 = c.b1 * x[i] - c.a1 * yi + z2;
+      z2 = c.b2 * x[i] - c.a2 * yi;
+      y[i] = yi;
+    }
+    return y;
+  }
+  function filtfilt(x: number[], c: { b0: number; b1: number; b2: number; a1: number; a2: number }): number[] {
+    const fwd = applyBiquad(x, c);
+    fwd.reverse();
+    const rev = applyBiquad(fwd, c);
+    rev.reverse();
+    return rev;
+  }
+
+  // Clamp highCut to Nyquist
+  const nyquist = fs / 2;
+  const safeHigh = Math.min(highCut, nyquist * 0.95);
+
+  let out = filtfilt(signal, hpCoeffs(lowCut));
+  out = filtfilt(out, lpCoeffs(safeHigh));
+  return out;
+}
+
+/**
+ * Compute RMS (root mean square) of an array.
+ */
+function computeRMS(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sumSq = values.reduce((a, b) => a + b * b, 0);
+  return Math.sqrt(sumSq / values.length);
+}
+
+/**
+ * Compute tremor magnitude from a wrist position history.
+ * 1. Compute frame-to-frame displacement
+ * 2. Bandpass filter the displacement signal to isolate 3–15 Hz tremor
+ * 3. Compute RMS of filtered signal
+ * 4. Subtract noise floor baseline and normalize
+ */
+function computeTremorMagnitude(
+  history: { x: number; y: number }[],
+  noiseFloor: number,
+  fs: number
+): number {
+  if (history.length < 20) return 0;
+
+  // Frame-to-frame displacements
+  const displacements: number[] = [];
+  for (let i = 1; i < history.length; i++) {
+    displacements.push(dist2D(history[i], history[i - 1]));
+  }
+
+  // Subtract mean to center the signal (removes DC offset from steady drift)
+  const mean = displacements.reduce((a, b) => a + b, 0) / displacements.length;
+  const centered = displacements.map(d => d - mean);
+
+  // Bandpass filter to isolate 3-15 Hz tremor band
+  const filtered = butterBandpass(centered, TREMOR_FREQ_LOW, TREMOR_FREQ_HIGH, fs);
+
+  // RMS of filtered signal
+  const rms = computeRMS(filtered);
+
+  // Subtract noise floor (calibrated baseline jitter) and normalize
+  // Typical MediaPipe jitter RMS after filtering: ~0.0005-0.002
+  // Actual tremor RMS: ~0.005-0.02+
+  const corrected = Math.max(0, rms - noiseFloor);
+
+  // Normalize to 0-1 range: ~0.015 RMS maps to ~1.0
+  const normalized = Math.min(1, corrected / 0.015);
+  return normalized;
 }
 
 // ──────────────────────────────────────────────
@@ -83,6 +192,18 @@ export function useKineticForensics() {
   // Hand position history for frame differencing (micro-dithering)
   const leftWristHistoryRef = useRef<{ x: number; y: number }[]>([]);
   const rightWristHistoryRef = useRef<{ x: number; y: number }[]>([]);
+
+  // Tremor noise floor calibration
+  const tremorNoiseFloorRef = useRef<number>(0.001); // default conservative noise floor
+  const tremorCalibSamplesRef = useRef<number[]>([]);
+  const tremorCalibDoneRef = useRef<boolean>(false);
+
+  // EMA smoothed tremor
+  const smoothedLeftTremorRef = useRef<number>(0);
+  const smoothedRightTremorRef = useRef<number>(0);
+
+  // Hysteresis counter for isTremoring
+  const tremorConsecutiveRef = useRef<number>(0);
 
   // Initialize MediaPipe PoseLandmarker
   useEffect(() => {
@@ -163,49 +284,87 @@ export function useKineticForensics() {
     const shieldingDrop = baselineRatio > 0 ? Math.max(0, (baselineRatio - currentRatio) / baselineRatio) : 0;
     const isHuddling = !isCalibrating && shieldingDrop > SHIELDING_THRESHOLD;
 
-    // ── Micro-Dithering (Hand Tremor via Frame Differencing) ──
-    // Track wrist positions and compute high-frequency variance
-    const leftWrist = { x: lm[LEFT_WRIST].x, y: lm[LEFT_WRIST].y };
-    const rightWrist = { x: lm[RIGHT_WRIST].x, y: lm[RIGHT_WRIST].y };
+    // ── Micro-Dithering (Hand Tremor — Bandpass-Filtered Displacement) ──
+    const noiseFloor = tremorNoiseFloorRef.current;
+    let rawLeftTremor = 0;
+    let rawRightTremor = 0;
 
-    leftWristHistoryRef.current.push(leftWrist);
-    rightWristHistoryRef.current.push(rightWrist);
+    const leftHandVisible = (lm[LEFT_INDEX]?.visibility || 0) > 0.5;
+    const rightHandVisible = (lm[RIGHT_INDEX]?.visibility || 0) > 0.5;
 
-    // Keep only the last DITHERING_WINDOW frames
-    if (leftWristHistoryRef.current.length > DITHERING_WINDOW) {
-      leftWristHistoryRef.current = leftWristHistoryRef.current.slice(-DITHERING_WINDOW);
-    }
-    if (rightWristHistoryRef.current.length > DITHERING_WINDOW) {
-      rightWristHistoryRef.current = rightWristHistoryRef.current.slice(-DITHERING_WINDOW);
-    }
-
-    // Calculate frame-to-frame displacement variance (proxy for 4-12 Hz tremor)
-    // Landmarks are in normalized 0-1 coords; typical frame deltas are ~0.001-0.02
-    let leftTremor = 0;
-    let rightTremor = 0;
-
-    if (leftWristHistoryRef.current.length >= 10) {
-      const leftDeltas: number[] = [];
-      for (let i = 1; i < leftWristHistoryRef.current.length; i++) {
-        leftDeltas.push(dist2D(leftWristHistoryRef.current[i], leftWristHistoryRef.current[i - 1]));
+    if (leftHandVisible) {
+      const leftHand = { x: lm[LEFT_INDEX].x, y: lm[LEFT_INDEX].y };
+      leftWristHistoryRef.current.push(leftHand);
+      if (leftWristHistoryRef.current.length > DITHERING_WINDOW) {
+        leftWristHistoryRef.current = leftWristHistoryRef.current.slice(-DITHERING_WINDOW);
       }
-      // Variance of deltas: typical range ~0.000001-0.0001 for still hands
-      // Multiply by 100000 to get into 0-1 readable range, cap at 1
-      leftTremor = Math.min(1, computeVariance(leftDeltas) * 100000);
-
-      const rightDeltas: number[] = [];
-      for (let i = 1; i < rightWristHistoryRef.current.length; i++) {
-        rightDeltas.push(dist2D(rightWristHistoryRef.current[i], rightWristHistoryRef.current[i - 1]));
-      }
-      rightTremor = Math.min(1, computeVariance(rightDeltas) * 100000);
+      rawLeftTremor = computeTremorMagnitude(leftWristHistoryRef.current, noiseFloor, 30);
+    } else {
+      leftWristHistoryRef.current = [];
     }
 
+    if (rightHandVisible) {
+      const rightHand = { x: lm[RIGHT_INDEX].x, y: lm[RIGHT_INDEX].y };
+      rightWristHistoryRef.current.push(rightHand);
+      if (rightWristHistoryRef.current.length > DITHERING_WINDOW) {
+        rightWristHistoryRef.current = rightWristHistoryRef.current.slice(-DITHERING_WINDOW);
+      }
+      rawRightTremor = computeTremorMagnitude(rightWristHistoryRef.current, noiseFloor, 30);
+    } else {
+      rightWristHistoryRef.current = [];
+    }
+
+    // ── Noise floor calibration: first 60 frames establish baseline jitter ──
+    const activeHistory = leftWristHistoryRef.current.length >= 20 ? leftWristHistoryRef.current : 
+                          (rightWristHistoryRef.current.length >= 20 ? rightWristHistoryRef.current : null);
+
+    if (!tremorCalibDoneRef.current && activeHistory) {
+      // Collect raw RMS samples (without noise floor subtraction)
+      const disp: number[] = [];
+      for (let i = 1; i < activeHistory.length; i++) {
+        disp.push(dist2D(activeHistory[i], activeHistory[i - 1]));
+      }
+      const mean = disp.reduce((a, b) => a + b, 0) / disp.length;
+      const centered = disp.map(d => d - mean);
+      const filtered = butterBandpass(centered, TREMOR_FREQ_LOW, TREMOR_FREQ_HIGH, 30);
+      const rms = computeRMS(filtered);
+      tremorCalibSamplesRef.current.push(rms);
+
+      if (tremorCalibSamplesRef.current.length >= 30) {
+        // Set noise floor as mean + 1 std of calibration RMS samples
+        const calMean = tremorCalibSamplesRef.current.reduce((a, b) => a + b, 0) / tremorCalibSamplesRef.current.length;
+        const calStd = Math.sqrt(
+          tremorCalibSamplesRef.current.reduce((a, b) => a + (b - calMean) ** 2, 0) / tremorCalibSamplesRef.current.length
+        );
+        tremorNoiseFloorRef.current = calMean + calStd;
+        tremorCalibDoneRef.current = true;
+      }
+    }
+
+    // ── EMA Smoothing on tremor output ──
+    let smoothedLeft = smoothedLeftTremorRef.current + TREMOR_SMOOTHING * (rawLeftTremor - smoothedLeftTremorRef.current);
+    let smoothedRight = smoothedRightTremorRef.current + TREMOR_SMOOTHING * (rawRightTremor - smoothedRightTremorRef.current);
+    
+    // Instantly cut off tremor if hand goes off-camera
+    if (!leftHandVisible) smoothedLeft = 0;
+    if (!rightHandVisible) smoothedRight = 0;
+
+    smoothedLeftTremorRef.current = smoothedLeft;
+    smoothedRightTremorRef.current = smoothedRight;
+
+    const leftTremor = Math.min(1, smoothedLeft);
+    const rightTremor = Math.min(1, smoothedRight);
     const avgTremor = (leftTremor + rightTremor) / 2;
-    // Threshold: 0.3+ on normalized scale = significant micro-jitter
-    const isTremoring = avgTremor > 0.3;
+
+    // ── Hysteresis: require TREMOR_HYSTERESIS_FRAMES consecutive frames above threshold ──
+    if (avgTremor > TREMOR_THRESHOLD) {
+      tremorConsecutiveRef.current++;
+    } else {
+      tremorConsecutiveRef.current = 0;
+    }
+    const isTremoring = tremorConsecutiveRef.current >= TREMOR_HYSTERESIS_FRAMES;
 
     // ── Torso Forward Lean ──
-    // Approximate forward lean as angle between shoulder midpoint and hip midpoint
     const shoulderMid = {
       x: (lm[LEFT_SHOULDER].x + lm[RIGHT_SHOULDER].x) / 2,
       y: (lm[LEFT_SHOULDER].y + lm[RIGHT_SHOULDER].y) / 2,
@@ -281,11 +440,20 @@ export function useKineticForensics() {
         ctx.textAlign = "center";
         ctx.fillText(`SR: ${currentRatio.toFixed(2)} ${isHuddling ? "⚠ HUDDLE" : ""}`, midElbow.x, midElbow.y);
 
-        // Draw tremor indicators at wrists
+        // Draw tremor indicators at hands
         if (isTremoring) {
-          for (const wIdx of [LEFT_WRIST, RIGHT_WRIST]) {
+          if (leftHandVisible) {
             ctx.beginPath();
-            ctx.arc(lm[wIdx].x * w, lm[wIdx].y * h, 12, 0, 2 * Math.PI);
+            ctx.arc(lm[LEFT_INDEX].x * w, lm[LEFT_INDEX].y * h, 12, 0, 2 * Math.PI);
+            ctx.strokeStyle = "rgba(245,158,11,0.7)";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([2, 2]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          if (rightHandVisible) {
+            ctx.beginPath();
+            ctx.arc(lm[RIGHT_INDEX].x * w, lm[RIGHT_INDEX].y * h, 12, 0, 2 * Math.PI);
             ctx.strokeStyle = "rgba(245,158,11,0.7)";
             ctx.lineWidth = 2;
             ctx.setLineDash([2, 2]);
