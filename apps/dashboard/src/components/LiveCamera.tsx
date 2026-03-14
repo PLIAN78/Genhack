@@ -169,7 +169,7 @@ export default function LiveCamera({ onMetricsUpdate }: LiveCameraProps) {
             ocular.metrics.isPeripheralSweep ? "bg-red-950/90 text-red-400 border-red-700 animate-pulse" : "bg-emerald-950/80 text-emerald-400 border-emerald-800/50"
           }`}>
             GAZE: {ocular.metrics.gazeDeviationDeg.toFixed(0)}° {ocular.metrics.gazeDirection.toUpperCase()}
-            {ocular.metrics.isPeripheralSweep && " ⚠ SWEEP"}
+            {ocular.metrics.isPeripheralSweep && " [SWEEP]"}
           </div>
           <div className={`px-2 py-0.5 rounded text-[10px] font-mono tracking-wide border bg-gray-900/80 text-gray-400 border-gray-700/50`}>
             EAR: {ocular.metrics.avgEAR.toFixed(3)} | BLINKS: {ocular.metrics.blinksPerMinute}/min
@@ -190,12 +190,12 @@ export default function LiveCamera({ onMetricsUpdate }: LiveCameraProps) {
                 kinetic.metrics.isHuddling ? "bg-red-950/90 text-red-400 border-red-700 animate-pulse" : "bg-emerald-950/80 text-emerald-400 border-emerald-800/50"
               }`}>
                 SHIELD: {kinetic.metrics.currentShieldingRatio.toFixed(2)} ({kinetic.metrics.shieldingDrop.toFixed(0)}% drop)
-                {kinetic.metrics.isHuddling && " ⚠ HUDDLE"}
+                {kinetic.metrics.isHuddling && " [HUDDLE]"}
               </div>
               <div className={`px-2 py-0.5 rounded text-[10px] font-mono tracking-wide border ${
                 kinetic.metrics.isTremoring ? "bg-orange-950/90 text-orange-400 border-orange-700 animate-pulse" : "bg-gray-900/80 text-gray-400 border-gray-700/50"
               }`}>
-                TREMOR: {kinetic.metrics.avgTremor.toFixed(3)} {kinetic.metrics.isTremoring && "⚠ DITHER"}
+                TREMOR: {kinetic.metrics.avgTremor.toFixed(3)} {kinetic.metrics.isTremoring && "[DITHER]"}
               </div>
             </>
           )}
@@ -208,7 +208,7 @@ export default function LiveCamera({ onMetricsUpdate }: LiveCameraProps) {
           <div className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wide border ${
             cardiac.metrics.heartRate > 100 ? "bg-red-950/90 text-red-400 border-red-700 animate-pulse" : "bg-emerald-950/80 text-emerald-400 border-emerald-800/50"
           }`}>
-            ♥ {cardiac.metrics.heartRate} BPM (conf: {(cardiac.metrics.heartRateConfidence * 100).toFixed(0)}%)
+            {cardiac.metrics.heartRate} BPM (conf: {(cardiac.metrics.heartRateConfidence * 100).toFixed(0)}%)
           </div>
         </div>
       )}
@@ -216,7 +216,7 @@ export default function LiveCamera({ onMetricsUpdate }: LiveCameraProps) {
       {cameraStatus === "active" && modelsReady && !ocular.metrics.faceDetected && !kinetic.metrics.bodyDetected && (
         <div className="absolute inset-0 flex items-end justify-center pb-4 z-20 pointer-events-none">
           <span className="px-3 py-1 bg-yellow-950/90 text-yellow-400 border border-yellow-700 rounded text-xs font-mono animate-pulse">
-            ⚠ NO SUBJECT DETECTED
+            NO SUBJECT DETECTED
           </span>
         </div>
       )}

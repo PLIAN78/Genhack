@@ -610,7 +610,7 @@ export function useCardiacForensics() {
           // BPM label
           ctx.font = "bold 10px monospace";
           ctx.fillStyle = confidence > 0.3 ? "#22c55e" : "#f59e0b";
-          ctx.fillText(`♥ ${bpm} BPM`, waveX + waveW + 6, waveY + waveH / 2 + 4);
+          ctx.fillText(`${bpm} BPM`, waveX + waveW + 6, waveY + waveH / 2 + 4);
         }
       }
     }

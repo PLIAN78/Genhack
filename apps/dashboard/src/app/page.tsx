@@ -88,7 +88,7 @@ export default function Dashboard() {
     if (d.verdict === "DECEPTIVE" && d.confidence > 0.3 && now - lastDeceptionAlertRef.current > 6000) {
       lastDeceptionAlertRef.current = now;
       const triggeredFeatures = d.featureVector.filter((f) => f.triggered).map((f) => f.name).join(", ");
-      newAlerts.push({ id: generateId(), time: getTimeStr(), msg: `⚠ DECEPTION DETECTED (${d.deceptionProbability}%) — ${triggeredFeatures}`, level: "High" });
+      newAlerts.push({ id: generateId(), time: getTimeStr(), msg: `DECEPTION DETECTED (${d.deceptionProbability}%) — ${triggeredFeatures}`, level: "High" });
     }
     
     // Batch update state if we have new alerts
@@ -280,7 +280,7 @@ export default function Dashboard() {
                 <div>
                   <span className="text-slate-500 tracking-wider">STATUS</span>
                   <div className={`text-sm mt-0.5 font-semibold ${k.isHuddling ? "text-red-400 drop-shadow-[0_0_5px_rgba(248,113,113,0.5)]" : "text-emerald-400"}`}>
-                    {k.isCalibrating ? "CALIB..." : k.isHuddling ? "⚠ HUDDLE" : "NORMAL"}
+                    {k.isCalibrating ? "CALIB..." : k.isHuddling ? "HUDDLE" : "NORMAL"}
                   </div>
                 </div>
                 <div>

@@ -92,13 +92,13 @@ export default function NodeGraph({ metrics, riskScore }: NodeGraphProps) {
     };
 
     const signalNodes: Node[] = [
-      makeNode('periph', `👁 Peripheral Sweep ${peripheralActive ? `\n(${o?.gazeDeviationDeg?.toFixed(0)}°)` : ''}`, 20, peripheralActive, 'ocular'),
-      makeNode('saccade', `⚡ Saccades ${saccadeActive ? `\n(${o?.saccadicSweepRate}/min)` : ''}`, 85, saccadeActive, 'ocular'),
-      makeNode('blinkvol', `💧 Blink Volatility ${blinkVolActive ? `\n(${o?.blinkRateVolatility?.toFixed(2)})` : ''}`, 150, blinkVolActive, 'ocular'),
-      makeNode('huddle', `🛡 Ventral Shielding ${huddleActive ? `\n(${k?.shieldingDrop?.toFixed(0)}% drop)` : ''}`, 215, huddleActive, 'kinetic'),
-      makeNode('tremor', `🤲 Hand Tremor ${tremorActive ? `\n(${k?.avgTremor?.toFixed(3)})` : ''}`, 280, tremorActive, 'kinetic'),
-      makeNode('hr', `♥ Heart Rate ${c && c.heartRate > 0 ? `\n(${c.heartRate} BPM)` : ''}`, 345, hrActive, 'cardiac'),
-      makeNode('carotid', `🩺 Carotid Pulse ${carotidActive ? `\n(EVM: ${c?.carotidPulseStrength?.toFixed(2)})` : ''}`, 410, carotidActive, 'cardiac'),
+      makeNode('periph', `Peripheral Sweep ${peripheralActive ? `\n(${o?.gazeDeviationDeg?.toFixed(0)}°)` : ''}`, 20, peripheralActive, 'ocular'),
+      makeNode('saccade', `Saccades ${saccadeActive ? `\n(${o?.saccadicSweepRate}/min)` : ''}`, 85, saccadeActive, 'ocular'),
+      makeNode('blinkvol', `Blink Volatility ${blinkVolActive ? `\n(${o?.blinkRateVolatility?.toFixed(2)})` : ''}`, 150, blinkVolActive, 'ocular'),
+      makeNode('huddle', `Ventral Shielding ${huddleActive ? `\n(${k?.shieldingDrop?.toFixed(0)}% drop)` : ''}`, 215, huddleActive, 'kinetic'),
+      makeNode('tremor', `Hand Tremor ${tremorActive ? `\n(${k?.avgTremor?.toFixed(3)})` : ''}`, 280, tremorActive, 'kinetic'),
+      makeNode('hr', `Heart Rate ${c && c.heartRate > 0 ? `\n(${c.heartRate} BPM)` : ''}`, 345, hrActive, 'cardiac'),
+      makeNode('carotid', `Carotid Pulse ${carotidActive ? `\n(EVM: ${c?.carotidPulseStrength?.toFixed(2)})` : ''}`, 410, carotidActive, 'cardiac'),
     ];
 
     // ── Fusion node (center) ──
@@ -109,7 +109,7 @@ export default function NodeGraph({ metrics, riskScore }: NodeGraphProps) {
     const fusionNode: Node = {
       id: 'fusion',
       position: { x: 360, y: 195 },
-      data: { label: `${severity === 'High' ? '🔴' : severity === 'Medium' ? '🟡' : '🟢'} RISK LEVEL: ${rScore}/100\n${severity.toUpperCase()}` },
+      data: { label: `RISK LEVEL: ${rScore}/100\n${severity.toUpperCase()}` },
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
       style: {
@@ -130,8 +130,8 @@ export default function NodeGraph({ metrics, riskScore }: NodeGraphProps) {
 
     // ── Deception verdict node (right) ──
     const verdictLabel = d
-      ? `🧠 ${d.verdict}\nProb: ${d.deceptionProbability}%\nConf: ${(d.confidence * 100).toFixed(0)}%`
-      : '🧠 Analyzing...';
+      ? `${d.verdict}\nProb: ${d.deceptionProbability}%\nConf: ${(d.confidence * 100).toFixed(0)}%`
+      : 'Analyzing...';
 
     const isDeceptive = d?.verdict === 'DECEPTIVE';
     const isTruthful = d?.verdict === 'TRUTHFUL';

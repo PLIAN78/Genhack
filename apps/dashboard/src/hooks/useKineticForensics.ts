@@ -438,7 +438,7 @@ export function useKineticForensics() {
         ctx.font = "10px monospace";
         ctx.fillStyle = isHuddling ? "#ef4444" : "#60a5fa";
         ctx.textAlign = "center";
-        ctx.fillText(`SR: ${currentRatio.toFixed(2)} ${isHuddling ? "⚠ HUDDLE" : ""}`, midElbow.x, midElbow.y);
+        ctx.fillText(`SR: ${currentRatio.toFixed(2)} ${isHuddling ? "HUDDLE" : ""}`, midElbow.x, midElbow.y);
 
         // Draw tremor indicators at hands
         if (isTremoring) {
