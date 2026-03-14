@@ -197,7 +197,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-12 gap-5" style={{ height: "calc(100vh - 160px)" }}>
         {/* Left Column */}
-        <div className="col-span-4 flex flex-col gap-4 overflow-hidden">
+        <div className="col-span-4 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-2 pb-4">
           {/* Live Camera */}
           <Panel
             className="shrink-0 relative shadow-[rgba(0,0,0,0.5)_0px_10px_30px_-10px]"
@@ -475,7 +475,7 @@ export default function Dashboard() {
           </Panel>
 
           {/* Alert Timeline */}
-          <Panel title="Event Timeline" className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          <Panel title="Event Timeline" className="shrink-0 flex flex-col min-h-[250px] overflow-hidden">
             <div className="flex-1 overflow-y-auto space-y-2 font-mono text-[10px] pr-2 custom-scrollbar">
               {displayAlerts.length === 0 && <p className="text-slate-500 italic">Listening for anomalies...</p>}
               {displayAlerts.map((a) => (

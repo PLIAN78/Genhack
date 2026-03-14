@@ -1,9 +1,10 @@
 "use client";
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useState, useRef } from 'react';
 import {
   ReactFlow,
   Controls,
   Background,
+  Position,
   type Node,
   type Edge,
 } from '@xyflow/react';
@@ -16,21 +17,37 @@ interface NodeGraphProps {
   riskScore: number;
 }
 
-// ── Color helpers ──
-const red = (v: boolean) => v ? '#991b1b' : '#1e293b';
-const amber = (v: boolean) => v ? '#92400e' : '#1e293b';
-const green = '#064e3b';
-const textC = (v: boolean) => v ? '#fff' : '#94a3b8';
-const borderActive = '2px solid rgba(248,113,113,0.6)';
-const borderIdle = '1px solid #334155';
-
 export default function NodeGraph({ metrics, riskScore }: NodeGraphProps) {
-  const o = metrics?.ocular;
-  const k = metrics?.kinetic;
-  const c = metrics?.cardiac;
-  const d = metrics?.deception;
+  // Throttle updates to exactly 4 FPS (250ms) to prevent ReactFlow flickering 
+  // from excessive re-renders (30FPS from camera).
+  const [displayData, setDisplayData] = useState({ metrics, riskScore });
+  const lastUpdateRef = useRef(0);
+
+  useEffect(() => {
+    const now = Date.now();
+    if (now - lastUpdateRef.current > 250) {
+      setDisplayData({ metrics, riskScore });
+      lastUpdateRef.current = now;
+    }
+    // Also schedule a fallback timeout in case metrics stop streaming to flush final state
+    const timeoutId = setTimeout(() => {
+      if (Date.now() - lastUpdateRef.current > 250) {
+        setDisplayData({ metrics, riskScore });
+        lastUpdateRef.current = Date.now();
+      }
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [metrics, riskScore]);
 
   const { nodes, edges } = useMemo(() => {
+    const m = displayData.metrics;
+    const rScore = displayData.riskScore;
+    
+    const o = m?.ocular;
+    const k = m?.kinetic;
+    const c = m?.cardiac;
+    const d = m?.deception;
+
     // ── Individual signal nodes (left column) ──
     const peripheralActive = !!o?.isPeripheralSweep;
     const saccadeActive = !!(o && o.saccadicSweepRate > 8);
@@ -57,6 +74,8 @@ export default function NodeGraph({ metrics, riskScore }: NodeGraphProps) {
         id,
         position: { x: 30, y },
         data: { label },
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
         style: {
           background: active ? catColors[category].active : catColors[category].idle,
           color: active ? '#ffffff' : '#94a3b8',
@@ -73,24 +92,26 @@ export default function NodeGraph({ metrics, riskScore }: NodeGraphProps) {
     };
 
     const signalNodes: Node[] = [
-      makeNode('periph', `👁 Peripheral Sweep ${peripheralActive ? `(${o?.gazeDeviationDeg?.toFixed(0)}°)` : '—'}`, 20, peripheralActive, 'ocular'),
-      makeNode('saccade', `⚡ Saccades ${saccadeActive ? `(${o?.saccadicSweepRate}/min)` : '—'}`, 85, saccadeActive, 'ocular'),
-      makeNode('blinkvol', `💧 Blink Volatility ${blinkVolActive ? `(${o?.blinkRateVolatility?.toFixed(2)})` : '—'}`, 150, blinkVolActive, 'ocular'),
-      makeNode('huddle', `🛡 Ventral Shielding ${huddleActive ? `(${k?.shieldingDrop?.toFixed(0)}% drop)` : '—'}`, 215, huddleActive, 'kinetic'),
-      makeNode('tremor', `🤲 Hand Tremor ${tremorActive ? `(${k?.avgTremor?.toFixed(3)})` : '—'}`, 280, tremorActive, 'kinetic'),
-      makeNode('hr', `♥ Heart Rate ${c && c.heartRate > 0 ? `(${c.heartRate} BPM)` : '—'}`, 345, hrActive, 'cardiac'),
-      makeNode('carotid', `🩺 Carotid Pulse ${carotidActive ? `(EVM: ${c?.carotidPulseStrength?.toFixed(2)})` : '—'}`, 410, carotidActive, 'cardiac'),
+      makeNode('periph', `👁 Peripheral Sweep ${peripheralActive ? `\n(${o?.gazeDeviationDeg?.toFixed(0)}°)` : ''}`, 20, peripheralActive, 'ocular'),
+      makeNode('saccade', `⚡ Saccades ${saccadeActive ? `\n(${o?.saccadicSweepRate}/min)` : ''}`, 85, saccadeActive, 'ocular'),
+      makeNode('blinkvol', `💧 Blink Volatility ${blinkVolActive ? `\n(${o?.blinkRateVolatility?.toFixed(2)})` : ''}`, 150, blinkVolActive, 'ocular'),
+      makeNode('huddle', `🛡 Ventral Shielding ${huddleActive ? `\n(${k?.shieldingDrop?.toFixed(0)}% drop)` : ''}`, 215, huddleActive, 'kinetic'),
+      makeNode('tremor', `🤲 Hand Tremor ${tremorActive ? `\n(${k?.avgTremor?.toFixed(3)})` : ''}`, 280, tremorActive, 'kinetic'),
+      makeNode('hr', `♥ Heart Rate ${c && c.heartRate > 0 ? `\n(${c.heartRate} BPM)` : ''}`, 345, hrActive, 'cardiac'),
+      makeNode('carotid', `🩺 Carotid Pulse ${carotidActive ? `\n(EVM: ${c?.carotidPulseStrength?.toFixed(2)})` : ''}`, 410, carotidActive, 'cardiac'),
     ];
 
     // ── Fusion node (center) ──
-    const severity = riskScore >= 50 ? 'High' : riskScore >= 25 ? 'Medium' : 'Low';
+    const severity = rScore >= 50 ? 'High' : rScore >= 25 ? 'Medium' : 'Low';
     const fusionBg = severity === 'High' ? '#991b1b' : severity === 'Medium' ? '#92400e' : '#1e293b';
     const fusionBorder = severity === 'High' ? '#ef4444' : severity === 'Medium' ? '#f59e0b' : '#334155';
 
     const fusionNode: Node = {
       id: 'fusion',
       position: { x: 360, y: 195 },
-      data: { label: `${severity === 'High' ? '🔴' : severity === 'Medium' ? '🟡' : '🟢'} RISK LEVEL: ${riskScore}/100\n${severity.toUpperCase()}` },
+      data: { label: `${severity === 'High' ? '🔴' : severity === 'Medium' ? '🟡' : '🟢'} RISK LEVEL: ${rScore}/100\n${severity.toUpperCase()}` },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
       style: {
         background: fusionBg,
         color: severity === 'Low' ? '#cbd5e1' : '#ffffff',
@@ -122,6 +143,8 @@ export default function NodeGraph({ metrics, riskScore }: NodeGraphProps) {
       id: 'verdict',
       position: { x: 620, y: 210 },
       data: { label: verdictLabel },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
       style: {
         background: verdictBg,
         color: isDeceptive ? '#fee2e2' : isTruthful ? '#d1fae5' : '#94a3b8',
@@ -161,16 +184,16 @@ export default function NodeGraph({ metrics, riskScore }: NodeGraphProps) {
       id: 'e-fusion-verdict',
       source: 'fusion',
       target: 'verdict',
-      animated: riskScore >= 25,
+      animated: rScore >= 25,
       style: {
-        stroke: riskScore >= 50 ? '#ef4444' : riskScore >= 25 ? '#f59e0b' : '#334155',
-        strokeWidth: riskScore >= 25 ? 2 : 1,
+        stroke: rScore >= 50 ? '#ef4444' : rScore >= 25 ? '#f59e0b' : '#334155',
+        strokeWidth: rScore >= 25 ? 2 : 1,
         transition: 'all 0.3s ease',
       },
     });
 
     return { nodes: allNodes, edges: allEdges };
-  }, [o, k, c, d, riskScore]);
+  }, [displayData]);
 
   return (
     <div style={{ width: "100%", height: "100%" }}>
@@ -182,11 +205,13 @@ export default function NodeGraph({ metrics, riskScore }: NodeGraphProps) {
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
-        panOnDrag={true}
-        zoomOnScroll={true}
+        panOnDrag={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
+        preventScrolling={false}
         proOptions={{ hideAttribution: true }}
       >
-        <Controls showInteractive={false} />
         <Background gap={16} size={1} color="#1e293b" />
       </ReactFlow>
     </div>
