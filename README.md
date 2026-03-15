@@ -8,6 +8,7 @@ Although our team was unable to present the project **in person at the hackathon
 
 The system focuses on extracting **real-time behavioral features** during remote interactions such as identity verification, digital onboarding, or financial support sessions.
 
+A live [demo](https://genhack-h6lg.vercel.app/) of the prototype is available online.
 ---
 
 # Problem
