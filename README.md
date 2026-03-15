@@ -253,7 +253,6 @@ Signal Processing
 
 This system is a **hackathon prototype** and has several limitations:
 
-- no large labeled dataset for deception training
 - behavioral signals are probabilistic
 - environmental factors (lighting, camera quality) affect signal extraction
 - ethical and privacy considerations must be addressed before deployment
@@ -272,15 +271,7 @@ Potential improvements include:
 - collecting labeled behavioral datasets
 - deploying a scalable real-time inference pipeline
 
----
 
-# Hackathon Context
-
-This project was developed during the **GenAI Genesis Hackathon at the University of Toronto**, targeting the **TD Track** and focusing on the problem of **financial fraud detection**.
-
-Although we were unable to present the project in person at the event, the system demonstrates how **multimodal behavioral analysis using computer vision and physiological signal processing** could contribute to future fraud detection tools.
-
----
 
 # Authors
 
