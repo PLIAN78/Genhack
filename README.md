@@ -1,63 +1,287 @@
 # Security Copilot
 
-Security Copilot is a multimodal AI-powered system designed to analyze behavioral and physiological signals in real time using a standard camera. The system combines computer vision, signal processing, and machine learning techniques to detect indicators associated with deceptive or high-risk behavior.
+Security Copilot is a multimodal computer vision system that analyzes behavioral and physiological signals from a standard camera feed to identify indicators associated with potential deception or high-risk interactions.
 
-This project was developed during the **GenAI Genesis Hackathon at the University of Toronto**, targeting the **TD Track**.
+This project was developed during the **GenAI Genesis Hackathon at the University of Toronto**, targeting the **TD Track**. The motivation was to explore new approaches to **fraud detection**, particularly in light of recent large-scale fraud incidents reported in the financial sector involving TD.
 
-## Hackathon Context
+Although our team was unable to present the project **in person at the hackathon**, we continued developing the prototype to demonstrate the architecture and technical approach.
 
-This project was built as a hackathon prototype aimed at addressing problems related to **fraud detection**, a topic that has recently received significant attention due to major fraud incidents reported in the financial sector involving TD.
+The system focuses on extracting **real-time behavioral features** during remote interactions such as identity verification, digital onboarding, or financial support sessions.
 
-Our goal was to explore how **real-time behavioral analysis using AI** could support fraud prevention workflows such as:
+---
 
-- Identity verification
-- Remote onboarding
-- Suspicious interaction detection
-- Interview or verification assistance
+# Problem
 
-Unfortunately, our team was not able to present the project **in person at the hackathon**, but we continued developing the prototype to demonstrate the concept and technical approach.
+Fraud detection systems in financial institutions typically rely on:
 
-## Project Overview
+- transaction anomaly detection
+- behavioral profiling over historical data
+- rule-based monitoring
 
-Security Copilot analyzes three categories of signals from a live camera feed:
+However, these systems rarely incorporate **real-time behavioral signals from the user during an interaction**.
 
-### 1. Ocular Analysis
-Tracks eye movement patterns to detect signs of cognitive load or avoidance behavior.
+Security Copilot explores whether **computer vision and physiological signal extraction** can provide additional real-time signals that may correlate with deceptive or high-risk behavior.
 
-Examples of extracted signals:
-- Gaze deviation
-- Blink rate volatility
-- Saccadic eye movements
-- Peripheral scanning
+---
 
-### 2. Kinetic Analysis
-Evaluates body posture and micro-movements that may indicate stress or defensive behavior.
+# System Architecture
 
-Examples:
-- Ventral shielding gestures
-- Hand tremor detection
-- Posture shifts
-- Defensive body language
+The system processes a live camera feed and extracts multimodal features that are fused into a real-time risk score.
 
-### 3. Physiological Analysis
-Uses remote photoplethysmography (rPPG) techniques to estimate heart rate without physical sensors.
+Pipeline overview:
 
-Examples:
-- Heart rate estimation
-- Pulse signal extraction
-- Physiological arousal indicators
+Camera Feed
+↓
+Face Detection / Landmark Tracking
+↓
+Feature Extraction
+↓
+Signal Processing
+↓
+Multimodal Fusion Model
+↓
+Risk Score + Indicator Breakdown
 
-All signals are fused into a single **risk score** generated in real time.
 
-## System Architecture
+The system analyzes three primary modalities:
 
-The system consists of two main components.
+1. Ocular signals (eye behavior)
+2. Kinetic signals (body motion)
+3. Physiological signals (heart rate via rPPG)
 
-### Landing Page
-A frontend landing page explaining the system and providing access to the dashboard.
+---
 
-### Dashboard
-The dashboard processes camera input and performs the multimodal analysis pipeline.
+# Computer Vision Pipeline
 
-High level flow:
+## Face and Landmark Detection
 
+Facial landmarks are extracted using **MediaPipe Vision**.
+
+Outputs include:
+
+- eye landmarks
+- iris position
+- facial contour points
+- head orientation
+
+These landmarks are tracked across frames to compute behavioral features.
+
+---
+
+# Ocular Signal Modeling
+
+Eye behavior provides signals related to cognitive load and stress.
+
+### Feature Extraction
+
+**Blink Rate**
+
+Blink events are detected using eyelid distance measurements.
+
+blink_rate = number_of_blinks / time_window
+
+
+Rapid increases in blink frequency may correlate with stress.
+
+---
+
+**Gaze Direction**
+
+Gaze vectors are approximated using iris and eye corner landmarks.
+
+gaze_vector = pupil_position − eye_center
+
+
+The system measures:
+
+- gaze deviation
+- gaze stability
+- gaze switching frequency
+
+Repeated gaze avoidance may indicate discomfort or increased cognitive load.
+
+---
+
+**Saccadic Motion**
+
+Rapid eye movement velocity is computed between frames:
+
+saccade_velocity = |gaze_t − gaze_t−1|
+
+
+High-frequency saccadic changes are treated as an instability indicator.
+
+---
+
+# Kinetic Signal Modeling
+
+Body movement features are extracted using pose estimation and hand tracking.
+
+### Feature Extraction
+
+**Hand Tremor Detection**
+
+Small oscillatory hand movements are measured using temporal variance.
+
+tremor_score = variance(hand_position_t − hand_position_t−1)
+
+
+Elevated tremor amplitude may correlate with stress.
+
+---
+
+**Defensive Gestures**
+
+Relative body landmark positions are used to detect defensive posture patterns such as:
+
+- arm crossing
+- torso shielding
+- hand-to-face gestures
+
+---
+
+**Postural Instability**
+
+Changes in body orientation across frames are measured to detect repeated posture shifts.
+
+---
+
+# Physiological Signal Modeling (rPPG)
+
+The system estimates heart rate using **remote photoplethysmography (rPPG)**.
+
+rPPG detects subtle color fluctuations in skin caused by blood flow.
+
+### Pipeline
+
+face_region
+↓
+RGB signal extraction
+↓
+temporal band-pass filtering
+↓
+FFT frequency analysis
+↓
+heart rate estimation
+
+
+Steps:
+
+1. Extract facial region of interest
+2. Track RGB intensity changes across frames
+3. Apply temporal filtering
+4. Use Fourier transform to identify pulse frequency
+
+Elevated or rapidly changing heart rate may indicate physiological stress.
+
+---
+
+# Multimodal Fusion
+
+Each modality produces a normalized score:
+
+ocular_score
+kinetic_score
+physio_score
+
+
+These scores are combined using a weighted fusion model:
+
+risk_score =
+w1 * ocular_score +
+w2 * kinetic_score +
+w3 * physio_score
+
+
+Weights can be tuned using empirical calibration or supervised training.
+
+The output includes:
+
+- overall risk score
+- modality contributions
+- dominant behavioral indicators
+
+Example output:
+
+Risk Score: 0.71
+
+Indicators:
+
+elevated blink volatility
+
+gaze deviation
+
+heart rate spike
+
+
+---
+
+# Explainability
+
+Instead of producing only a binary classification, the system exposes **feature-level contributions** from each modality.
+
+This allows investigators or analysts to understand why a session was flagged.
+
+Explainability is important for systems deployed in financial or regulatory environments.
+
+---
+
+# Technology Stack
+
+Frontend
+
+- React
+- TypeScript
+- Tailwind CSS
+- MediaPipe Vision
+
+Backend
+
+- Python
+- FastAPI
+
+Signal Processing
+
+- remote photoplethysmography
+- temporal filtering
+- frequency analysis
+- multimodal feature fusion
+
+---
+
+# Limitations
+
+This system is a **hackathon prototype** and has several limitations:
+
+- no large labeled dataset for deception training
+- behavioral signals are probabilistic
+- environmental factors (lighting, camera quality) affect signal extraction
+- ethical and privacy considerations must be addressed before deployment
+
+The goal of the project was to demonstrate **technical feasibility and architecture**.
+
+---
+
+# Future Work
+
+Potential improvements include:
+
+- training a supervised multimodal model
+- integrating behavioral signals with transaction anomaly detection
+- improving rPPG robustness
+- collecting labeled behavioral datasets
+- deploying a scalable real-time inference pipeline
+
+---
+
+# Hackathon Context
+
+This project was developed during the **GenAI Genesis Hackathon at the University of Toronto**, targeting the **TD Track** and focusing on the problem of **financial fraud detection**.
+
+Although we were unable to present the project in person at the event, the system demonstrates how **multimodal behavioral analysis using computer vision and physiological signal processing** could contribute to future fraud detection tools.
+
+---
+
+# Authors
+
+Developed during the **GenAI Genesis Hackathon at the University of Toronto**.
